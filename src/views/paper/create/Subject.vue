@@ -7,9 +7,10 @@
         @submit="handleSubmit"
         v-loading="loading"
         loading-tip="正在生成，请稍等..."
-        ><template #resetBefore="{ model, field }">
-          <a-button class="mb-2" @click="openSubjectGenModal()" color="success"> 推荐主题 </a-button
-          >&nbsp;
+        ><template #operation>
+          <a-button @click="genSubject()"> 推荐主题 </a-button>&nbsp; </template
+        ><template #nextstep>
+          <a-button type="primary" block @click="submit()"> 下一步 </a-button>&nbsp;
         </template></BasicForm
       >
       <SubjectGenModal @register="registerSubjectGenModal" @generated="handleGenerated" />
@@ -24,14 +25,12 @@
   import { defineComponent, ref } from 'vue';
   import { BasicForm, useForm } from '/@/components/Form';
   import { Select, Input, Divider, Alert } from 'ant-design-vue';
-  import { chatGPT } from '/@/api/openAI';
   import { useMessage } from '/@/hooks/web/useMessage';
   import SubjectGenModal from './SubjectGenModal.vue';
   import { useModal } from '/@/components/Modal';
-  import { ChatParams } from '/@/api/model/openAIModel';
   import { PaperInfo } from '../usePaper';
 
-  const { createErrorModal } = useMessage();
+  const {} = useMessage();
   export default defineComponent({
     components: {
       SubjectGenModal,
@@ -48,13 +47,13 @@
       },
     },
     emits: ['next'],
-    setup(props, { emit }) {
+    setup(_, { emit }) {
       const [registerSubjectGenModal, { openModal: openSubjectGenModal }] = useModal();
       const recommandationOptions = ref<Array<{ label: string; value: string }>>([
-        { label: '关于加强社区服务中心建设的提案', value: '关于加强社区服务中心建设的提案' },
+        //{ label: '关于加强社区服务中心建设的提案', value: '关于加强社区服务中心建设的提案' },
       ]);
       const loading = ref(false);
-      const [regForm, { setProps, getFieldsValue, setFieldsValue }] = useForm({
+      const [regForm, { /*setProps, */ getFieldsValue, setFieldsValue, submit }] = useForm({
         schemas: [
           // {
           //   label: '本地签名证书',
@@ -82,16 +81,24 @@
             field: 'subject',
             component: 'Input',
             componentProps: {
-              placeholder: '请输入主题',
+              placeholder: '请输入主题，格式如：关于加强社区服务中心建设的提案',
               maxLength: 256,
             },
+            colProps: { span: 24 },
             required: true,
-            defaultValue: '', //'',
+            defaultValue: '',
+          },
+          {
+            label: ' ',
+            field: 'operation',
+            component: 'Input',
+            colProps: { span: 24 },
+            slot: 'operation',
           },
           {
             field: 'field7',
             component: 'RadioGroup',
-            label: '备选',
+            label: '推荐',
             componentProps: {
               onchange: (e) => {
                 setFieldsValue({ subject: e.target.value });
@@ -104,11 +111,22 @@
               },
             },
             colProps: { span: 24 },
+            show: () => {
+              return recommandationOptions.value.length > 0;
+            },
+          },
+          {
+            label: ' ',
+            field: 'nextstep',
+            component: 'Input',
+            colProps: { span: 24 },
+            slot: 'nextstep',
           },
         ],
         labelWidth: 100,
         baseColProps: { span: 24 },
         showResetButton: false,
+        showActionButtonGroup: false,
         submitButtonOptions: {
           text: '下一步',
         },
@@ -118,40 +136,16 @@
       });
 
       function handleGenerated(result: any) {
-        console.log(result);
-        recommandationOptions.value = [];
-        result.split('\n').forEach((el) => {
-          if (el != '' && el[el.length - 1] != '：') {
-            let val = el.indexOf('.') < 0 ? el.trim() : el.split('.')[1].trim();
-            recommandationOptions.value.push({ label: val, value: val });
-          }
-        });
+        if (result != '' && result[result.length - 1] != '：') {
+          let val = result.indexOf('.') < 0 ? result.trim() : result.split('.')[1].trim();
+          recommandationOptions.value.push({ label: val, value: val });
+        }
+        //console.log(recommandationOptions.value);
       }
 
       async function genSubject() {
-        try {
-          const values = getFieldsValue();
-          const messages: ChatParams[] = [];
-          messages.push({ role: 'system', content: `${values.prompt}` });
-          messages.push({
-            role: 'user',
-            content: `学习以下资料，生成${values.amount}个主题，主题格式是“关于...的提案”：\n${values.summary}`,
-          });
-          //console.log(messages);
-          loading.value = true;
-          const subject = await chatGPT(messages);
-          //console.log(subjects);
-          recommandationOptions.value = [];
-          subject.content.split('\n').forEach((el) => {
-            if (el != '') recommandationOptions.value.push({ value: el.split('.')[1].trim() });
-          });
-        } catch (error) {
-          createErrorModal({
-            title: '提示',
-            content: '网络错误！',
-          });
-        }
-        loading.value = false;
+        recommandationOptions.value = [];
+        openSubjectGenModal();
       }
 
       async function handleSubmit(values) {
@@ -166,6 +160,8 @@
         registerSubjectGenModal,
         openSubjectGenModal,
         handleGenerated,
+        getFieldsValue,
+        submit,
       };
     },
   });

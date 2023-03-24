@@ -1,41 +1,39 @@
 <!-- eslint-disable vue/no-v-html -->
 <template>
   <BasicModal
-    width="800px"
+    width="640px"
+    :minHeight="40"
     title="创建大纲"
     okText="保存"
     v-bind="$attrs"
-    @register="register"
+    @register="regModal"
     @ok="handleOk"
     @visible-change="handleVisibleChange"
     :closeFunc="handleCloseFunc"
     :maskClosable="false"
     :keyboard="false"
     :okButtonProps="getOkButtonProps"
-    :cancelButtonProps="{ disabled: isUploadingRef }"
+    :show-ok-btn="false"
+    :cancelButtonProps="{ disabled: isGenerating }"
   >
     <div class="pt-3px pr-3px">
       <BasicForm @register="regForm" ref="formRef" />
-      <a-alert message="根据您提供的补充资料和指定的章节内容，系统为您创建文章的大纲。" show-icon />
+      <!--a-alert message="根据您提供的补充资料内容，系统为您创建文章的大纲。" show-icon /-->
     </div>
-    <div class="pl-5px pt-5px pr-5px" v-html="getBodyHtml"> </div>
+    <!--div class="pl-5px pt-5px pr-5px" v-html="getBodyHtml"> </div-->
     <template #centerFooter>
-      <a-button @click="handleStartUpload" color="success" :loading="isUploadingRef">
-        {{ getUploadBtnText }}
+      <a-button @click="handleGenerate" color="success" :loading="isGenerating">
+        {{ getGenerateBtnText }}
       </a-button>
     </template>
   </BasicModal>
 </template>
 <script lang="ts">
-  import { defineComponent, ref, unref, computed, PropType } from 'vue';
+  import { defineComponent, ref, computed, PropType } from 'vue';
   import { Descriptions, FormInstance, Alert, Divider } from 'ant-design-vue';
   import { BasicModal, useModalInner } from '/@/components/Modal';
-  //   import { BasicTable, useTable } from '/@/components/Table';
-  // hooks
   import { useMessage } from '/@/hooks/web/useMessage';
-  // utils
-  import { useI18n } from '/@/hooks/web/useI18n';
-  import { chatGPT } from '/@/api/openAI';
+  import { chatGPTStream } from '/@/api/openAI';
   import { BasicForm, useForm } from '/@/components/Form/index';
   import { ChatParams } from '/@/api/model/openAIModel';
 
@@ -55,22 +53,24 @@
         default: () => [],
       },
     },
-    emits: ['change', 'register', 'delete'],
-    setup(props, { emit }) {
-      const body = ref(``);
+    emits: ['register', 'generated', 'clearoutline'],
+    setup(_, { emit }) {
+      const additionRows = ref(2);
+      const body = ref('');
       var modalParams;
-      const isUploadingRef = ref(false);
+      const isGenerating = ref(false);
 
-      const { t } = useI18n();
-      const [register, { closeModal, redoModalHeight }] = useModalInner((data) => {
+      const [regModal, { closeModal, redoModalHeight }] = useModalInner((data) => {
         modalParams = data;
+        setFieldsValue({ outline: modalParams.part });
       });
 
       const formRef = ref<FormInstance>();
       const [
         regForm,
         {
-          // setFieldsValue,
+          setFieldsValue,
+          getFieldsValue,
           // setProps
         },
       ] = useForm({
@@ -84,29 +84,29 @@
               rows: 5,
             },
             defaultValue: '现状\n建议',
+            show: false,
           },
           {
             field: 'addition',
             component: 'InputTextArea',
             componentProps: {
-              placeholder: '请输入具体资料或者资料链接',
-              rows: 5,
+              placeholder: '根据您提供的补充资料内容，系统为您创建文章的大纲。',
+              rows: additionRows,
+              onfocus: () => {
+                additionRows.value = 10;
+                redoModalHeight();
+              },
+              onblur: () => {
+                additionRows.value = 2;
+                redoModalHeight();
+              },
             },
-            label: '补充资料',
+            label: '参考资料',
             required: false,
-            defaultValue: 'https://www.zhihu.com/question/271793882',
-          },
-          {
-            field: 'div1',
-            component: 'Divider',
-            label: '以下为新创建的大纲',
+            //defaultValue: 'https://www.zhihu.com/question/271793882',
           },
         ],
-        labelWidth: 100,
-        actionColOptions: {
-          span: 24,
-          pull: 10,
-        },
+        labelWidth: 80,
         baseColProps: { span: 24 },
         showActionButtonGroup: false,
       });
@@ -117,19 +117,25 @@
 
       const getOkButtonProps = computed(() => {
         return {
-          disabled: isUploadingRef.value,
+          disabled: isGenerating.value || !body.value.length,
         };
       });
 
-      const getUploadBtnText = computed(() => {
-        return isUploadingRef.value ? '创建中' : '开始创建';
+      const getGenerateBtnText = computed(() => {
+        return isGenerating.value ? '创建中' : '开始创建';
       });
 
-      async function handleStartUpload() {
+      async function handleGenerate() {
+        if (isGenerating.value) {
+          isGenerating.value = false;
+          return;
+        }
+
         try {
-          //const outline = modalParams.text;
-          isUploadingRef.value = true;
-          const values = formRef.value?.getFieldsValue();
+          isGenerating.value = true;
+          emit('clearoutline');
+          const values = getFieldsValue();
+
           const messages: ChatParams[] = [];
           messages.push({ role: 'system', content: '您是南京市政协委员' });
           if (values?.addition)
@@ -149,25 +155,49 @@
               });
           }
 
-          const msg = await chatGPT(messages);
-          messages.push(msg);
-          modalParams.paper.messages = messages;
-          body.value = msg.content;
-
-          redoModalHeight();
-          //emit('next', values, outline, content);
+          body.value = '';
+          const rawResponse = await chatGPTStream(messages);
+          const writableStream = new WritableStream({
+            write: (instream) => {
+              const chunkString = new TextDecoder('utf-8').decode(instream);
+              chunkString.split('\n').forEach((chunk) => {
+                if (chunk.length < 1) return;
+                if (chunk.startsWith('data: ')) {
+                  //console.log(chunk);
+                  if (chunk === 'data: [DONE]' /* || !isGenerating.value*/) {
+                    isGenerating.value = false;
+                    closeModal();
+                    return;
+                  }
+                  try {
+                    const json = JSON.parse(chunk.substring(6));
+                    const text = json.choices[0].delta?.content || '';
+                    body.value += text;
+                    redoModalHeight();
+                    emit('generated', text);
+                  } catch (e) {
+                    //controller.error(e);
+                    console.log('[Parse stream error]', e);
+                    console.log(chunk);
+                  }
+                } else {
+                  console.log('Bad stream data:', chunk);
+                }
+              });
+            },
+          });
+          rawResponse.body?.pipeTo(writableStream);
         } catch (error) {
+          isGenerating.value = false;
+          console.log(error);
           createErrorModal({
             title: '提示',
             content: '网络错误！',
           });
         }
-        isUploadingRef.value = false;
       }
 
-      //   点击保存
       function handleOk() {
-        //console.log()
         if (body.value.length > 0) {
           const editor = modalParams.editor;
           if (modalParams.isAll) {
@@ -187,12 +217,11 @@
         closeModal();
       }
 
-      // 点击关闭：则所有操作不保存，包括上传的
       async function handleCloseFunc() {
-        if (!isUploadingRef.value) {
+        if (!isGenerating.value) {
           return true;
         } else {
-          createMessage.warning('请等待创建结束后操作');
+          createMessage.warning(`请等待创建结束后操作`);
           return false;
         }
       }
@@ -206,15 +235,14 @@
       }
 
       return {
-        register,
+        regModal,
         getOkButtonProps,
-        isUploadingRef,
-        handleStartUpload,
+        isGenerating,
+        handleGenerate,
         handleOk,
         handleCloseFunc,
         getBodyHtml,
-        getUploadBtnText,
-        t,
+        getGenerateBtnText,
         body,
         handleVisibleChange,
         regForm,
@@ -223,26 +251,3 @@
     },
   });
 </script>
-<style lang="less">
-  .upload-modal {
-    .ant-upload-list {
-      display: none;
-    }
-
-    .ant-table-wrapper .ant-spin-nested-loading {
-      padding: 0;
-    }
-
-    &-toolbar {
-      display: flex;
-      align-items: center;
-      margin-bottom: 8px;
-
-      &__btn {
-        margin-left: 8px;
-        text-align: right;
-        flex: 1;
-      }
-    }
-  }
-</style>

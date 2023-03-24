@@ -17,12 +17,16 @@
           @onCreated="handleCreated"
           @onChange="handleChange"
         /> </template
-      ><template #resetBefore>
-        <a-button class="mb-2" @click="genOutline()" color="success"> 创建大纲 </a-button
-        >&nbsp;&nbsp;<a-button class="mb-2" @click="stepPrev()"> 上一步 </a-button>&nbsp;
+      ><template #operation><a-button @click="genOutline()"> 创建 </a-button></template
+      ><template #nextstep
+        ><a-button class="mb-4" block @click="stepPrev()"> 返回 </a-button>
+        <a-button type="primary" block @click="submit()"> 下一步 </a-button>
       </template></BasicForm
-    ><OutlineGenModal @register="registerOutlineGenModal" />
-    <OutlineMergeModal @register="registerOutlineMergeModal" />
+    ><OutlineGenModal
+      @register="registerOutlineGenModal"
+      @generated="handleGenerated"
+      @clearoutline="handleClearOutline"
+    />
   </div>
 </template>
 <script lang="ts">
@@ -40,20 +44,17 @@
   import { BasicForm, useForm } from '/@/components/Form';
   import { Alert, Divider, Descriptions } from 'ant-design-vue';
   import { PaperInfo } from '../usePaper';
-  import { chatGPT } from '/@/api/openAI';
   import { useMessage } from '/@/hooks/web/useMessage';
   import { IButtonMenu, IDomEditor } from '@wangeditor/editor';
   import { Boot } from '@wangeditor/editor';
   import OutlineGenModal from './OutlineGenModal.vue';
-  import OutlineMergeModal from './OutlineMergeModal.vue';
   import { useModal } from '/@/components/Modal';
 
-  const { createErrorModal, createWarningModal } = useMessage();
+  const { createWarningModal } = useMessage();
 
   export default defineComponent({
     components: {
       OutlineGenModal,
-      OutlineMergeModal,
       Editor,
       Toolbar,
       BasicForm,
@@ -73,13 +74,12 @@
       const loading = ref(false);
 
       const [registerOutlineGenModal, { openModal: openOutlineGenModal }] = useModal();
-      const [registerOutlineMergeModal, { openModal: openOutlineMergeModal }] = useModal();
 
       const editorRef = shallowRef();
       // 内容 HTML
       const richText = ref('');
 
-      class MergeButtonMenu implements IButtonMenu {
+      class CreateOutlineButtonMenu implements IButtonMenu {
         title: string;
         iconSvg?: string | undefined;
         hotkey?: string | undefined;
@@ -88,7 +88,7 @@
         width?: number | undefined;
 
         constructor() {
-          this.title = '合并';
+          this.title = '创建大纲';
           // this.iconSvg = '<svg>...</svg>'
           this.tag = 'button';
         }
@@ -111,17 +111,17 @@
         }
 
         // 点击菜单时触发的函数
-        async exec(editor: IDomEditor, value: string | boolean) {
+        async exec(editor: IDomEditor /*, value: string | boolean*/) {
           if (this.isDisabled()) return;
           const text = this.getValue(editor);
-          if (!text) {
-            createWarningModal({
-              title: '提示',
-              content: '未选中内容',
-            });
-            return;
-          }
-          openOutlineMergeModal(true, {
+          // if (!text) {
+          //   createWarningModal({
+          //     title: '提示',
+          //     content: '未选中内容',
+          //   });
+          //   return;
+          // }
+          openOutlineGenModal(true, {
             editor: editorRef.value,
             paper: props.paper,
             part: text,
@@ -130,9 +130,9 @@
       }
 
       Boot.registerMenu({
-        key: 'merge', // unique
+        key: 'CreateOutline', // unique
         factory() {
-          return new MergeButtonMenu();
+          return new CreateOutlineButtonMenu();
         },
       });
 
@@ -140,19 +140,20 @@
         toolbarKeys: [],
         // insertKeys: {
         //   index: 0, // 插入的位置，基于当前的 toolbarKeys
-        //   keys: ['merge'],
+        //   keys: ['CreateOutline'],
         // },
       };
+
       const editorConfig = {
-        placeholder: '请输入内容...',
+        placeholder: '请创建大纲',
         hoverbarKeys: {
           text: {
-            menuKeys: [], //['merge'],
+            menuKeys: [], //['CreateOutline'],
           },
         },
       };
 
-      const [register, { getFieldsValue, setFieldsValue }] = useForm({
+      const [register, { setFieldsValue, submit }] = useForm({
         schemas: [
           {
             field: 'subject',
@@ -162,10 +163,23 @@
             defaultValue: '',
           },
           {
+            field: 'operation',
+            component: 'Input',
+            label: '大纲',
+            slot: 'operation',
+          },
+          {
             field: 'outline',
             component: 'InputTextArea',
-            label: '大纲',
+            label: ' ',
             slot: 'richtext',
+          },
+          {
+            label: ' ',
+            field: 'nextstep',
+            component: 'Input',
+            colProps: { span: 24 },
+            slot: 'nextstep',
           },
         ],
         labelWidth: 100,
@@ -177,13 +191,13 @@
         submitButtonOptions: {
           text: '下一步',
         },
+        showActionButtonGroup: false,
       });
 
       onMounted(() => {
         isMounted.value = true;
       });
 
-      // 组件销毁时，也及时销毁编辑器，重要！
       onBeforeUnmount(() => {
         const editor = editorRef.value;
         if (editor == null) return;
@@ -192,10 +206,11 @@
       });
 
       watch(
-        () => [props.paper?.subject],
+        () => [props.paper?.current],
         () => {
           if (!isMounted.value) return;
           setFieldsValue({ subject: props.paper?.subject });
+          if (props.paper?.current === 1 && editorRef.value.getText().length < 1) genOutline();
           // console.log('step2');
           // console.log(props.paper);
         },
@@ -206,13 +221,11 @@
         console.log('created', editor);
         editorRef.value = editor; // 记录 editor 实例，重要！
         //editor.setHtml(``);
-        editor.on('modalOrPanelShow', (modalOrPanel) => {
-          console.log(modalOrPanel);
-        });
+        // editor.on('modalOrPanelShow', (modalOrPanel) => {
+        //   console.log(modalOrPanel);
+        // });
       };
-      const handleChange = (editor) => {
-        //console.log('change:', editor.getText().length);
-      };
+      const handleChange = (/*editor*/) => {};
 
       const printHtml = () => {
         const editor = editorRef.value;
@@ -226,50 +239,28 @@
         editor.disable();
       };
 
+      function handleClearOutline() {
+        editorRef.value.clear();
+        editorRef.value.focus();
+        //editorRef.value
+        //console.log(recommandationOptions.value);
+      }
+
+      function handleGenerated(result: any) {
+        let text = editorRef.value.getText();
+        text += result;
+        editorRef.value.setHtml(text);
+        editorRef.value.move(result.length);
+        //editorRef.value
+        //console.log(recommandationOptions.value);
+      }
+
       async function genOutline() {
         openOutlineGenModal(true, {
           isAll: true,
           editor: editorRef.value,
           paper: props.paper,
         });
-        return;
-        let outline = `I. 现状
-  A. 南京市文化产业的整体表现
-       1. 介绍南京市文化产业的现状，包括规模、产值、就业等方面。
-  B. 南京市文化产业存在的问题和挑战
-       1. 针对南京市文化产业当前存在的发展问题和挑战进行分析。
-       2. 例如，文化消费不足、文化产业缺乏核心技术、文化人才缺乏等问题。
-
-  II. 建议
-  A. 提高文化消费，拓展文化市场
-       1. 结合南京市文化特色，推出一系列有品质、有吸引力的文化产品，提升人们的文化消费意识。
-       2. 积极发展文化旅游业，提高南京市的文化知名度和影响力，拓展文化市场。
-  B. 加大投资，推进文化产业升级
-       1. 加强文化创意产业基础设施建设，提高文化创新创意能力和竞争力。
-       2. 增加对文化产业的投入，提高文化产业核心技术的研发和提高人才培养水平。`;
-        outline = outline.trim().replaceAll(' ', '');
-        richText.value = outline;
-        setFieldsValue({ outline: outline });
-        return;
-        const prompt = '假设您是南京市的一位政协委员，准备写一份政协提案';
-        try {
-          const values = getFieldsValue();
-          //let content = `请以“${values.subject}”为题目，生成政协提案的大纲，提案分为2个部分，分别为现状、建议。`;
-          let content = `为一篇${values.subject}创建一个大纲，这篇文章分为2个段落：现状、建议`;
-          console.log(content);
-          //content = '你好';
-          //console.log(content);
-          loading.value = true;
-          const outline = await chatGPT(content);
-          console.log(outline);
-          setFieldsValue({ outline: outline });
-        } catch (error) {
-          createErrorModal({
-            title: '提示',
-            content: '网络错误！',
-          });
-        }
-        loading.value = false;
       }
 
       async function stepPrev() {
@@ -301,11 +292,12 @@
         handleCreated,
         handleChange,
         registerOutlineGenModal,
-        registerOutlineMergeModal,
         openOutlineGenModal,
-        openOutlineMergeModal,
         printHtml,
         disable,
+        submit,
+        handleGenerated,
+        handleClearOutline,
       };
     },
   });

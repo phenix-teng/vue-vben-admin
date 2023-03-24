@@ -51,6 +51,7 @@
       const current = ref(0);
 
       const paper = ref<PaperInfo>({
+        current: 0,
         messages: [],
         subject: '',
         outline: '',
@@ -62,10 +63,12 @@
         //console.log(outline);
         paper.value.subject = step1Values.subject;
         current.value++;
+        paper.value.current++;
       }
 
       function handleStep2Prev() {
         current.value--;
+        paper.value.current--;
       }
 
       function handleStep2Next(step2Values: any) {
@@ -74,20 +77,24 @@
         paper.value.outline = step2Values.outline;
         //paper.value.body = body;
         current.value++;
+        paper.value.current++;
       }
 
       function handleStep3Prev() {
         current.value--;
+        paper.value.current--;
       }
 
       function handleStep3Next(step3Values: any) {
         //console.log(step2Values);
         paper.value.body = step3Values.body;
         current.value++;
+        paper.value.current++;
       }
 
       function handleStep4Prev() {
         current.value--;
+        paper.value.current--;
       }
 
       return {
