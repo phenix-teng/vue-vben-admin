@@ -1,6 +1,6 @@
 <!-- eslint-disable vue/v-on-event-hyphenation -->
-<template
-  ><div class="step3">
+<template>
+  <div class="step4">
     <BasicForm
       @register="register"
       :paper="paper"
@@ -15,29 +15,28 @@
           v-model="richText"
           style="height: 400px; border: 1px solid #ccc; overflow-y: hidden"
           @onCreated="handleCreated"
+          @onChange="handleChange"
         /> </template
-      ><template #resetBefore
-        ><!--a-button class="mb-2" type="primary" @click="generate()"> 生成选中 </a-button-->&nbsp;&nbsp;
-        <a-button class="mb-2" @click="generate()" color="success"> 修改 </a-button
-        >&nbsp;&nbsp;<a-button class="mb-2" @click="stepPrev()"> 上一步 </a-button>&nbsp;
+      ><template #operation><a-button @click="revision()"> 重写 </a-button></template
+      ><template #nextstep
+        ><a-button class="mb-4" block @click="stepPrev()"> 返回 </a-button>
+        <a-button type="primary" block @click="submit()"> 复制保存 </a-button>
       </template></BasicForm
-    >
-    <RevisionModal @register="registerRevisionModal" />
+    ><RevisionModal @register="registerRevisionModal" />
   </div>
 </template>
 <script lang="ts">
-  import { defineComponent, watch, onMounted, ref, unref, shallowRef, onBeforeUnmount } from 'vue';
-  import { BasicForm, useForm } from '/@/components/Form';
-  import { Descriptions } from 'ant-design-vue';
-  import { PaperInfo } from '../usePaper';
-  import { useMessage } from '/@/hooks/web/useMessage';
   import '@wangeditor/editor/dist/css/style.css';
   import { Editor, Toolbar } from '@wangeditor/editor-for-vue';
+  import { defineComponent, watch, onMounted, ref, unref, onBeforeUnmount, shallowRef } from 'vue';
+  import { BasicForm, useForm } from '/@/components/Form';
+  import { Alert, Divider, Descriptions } from 'ant-design-vue';
+  import { PaperInfo } from '../usePaper';
+  import { useMessage } from '/@/hooks/web/useMessage';
   import { IButtonMenu, IDomEditor } from '@wangeditor/editor';
   import { Boot } from '@wangeditor/editor';
   import RevisionModal from './RevisionModal.vue';
   import { useModal } from '/@/components/Modal';
-  import { ChatParams } from '/@/api/model/openAIModel';
   import { useCopyToClipboard } from '/@/hooks/web/useCopyToClipboard';
 
   const { createWarningModal, createMessage } = useMessage();
@@ -48,6 +47,8 @@
       Editor,
       Toolbar,
       BasicForm,
+      [Alert.name]: Alert,
+      [Divider.name]: Divider,
       [Descriptions.name]: Descriptions,
       [Descriptions.Item.name]: Descriptions.Item,
     },
@@ -60,7 +61,6 @@
     setup(props, { emit }) {
       const isMounted = ref(false);
       const loading = ref(false);
-      const chatMessages: ChatParams[] = [];
       const { clipboardRef, copiedRef } = useCopyToClipboard();
 
       const [registerRevisionModal, { openModal: openRevisionModal }] = useModal();
@@ -77,7 +77,7 @@
         width?: number | undefined;
 
         constructor() {
-          this.title = '修改';
+          this.title = '重写';
           // this.iconSvg = '<svg>...</svg>'
           this.tag = 'button';
         }
@@ -112,11 +112,9 @@
           }
 
           openRevisionModal(true, {
-            messages: chatMessages,
-            editor: editorRef.value,
-            isAll: false,
+            editor: editor,
             paper: props.paper,
-            part: value as string,
+            old: value as string,
           });
           //console.log('Create button', text);
           //editor.insertText(`[${text}]`); // value 即 this.value(editor) 的返回值
@@ -145,7 +143,7 @@
         },
       };
 
-      const [register, { setFieldsValue }] = useForm({
+      const [register, { setFieldsValue, submit }] = useForm({
         schemas: [
           {
             field: 'subject',
@@ -155,10 +153,23 @@
             defaultValue: '',
           },
           {
+            field: 'operation',
+            component: 'Input',
+            label: '终稿',
+            slot: 'operation',
+          },
+          {
             field: 'body',
             component: 'InputTextArea',
-            label: '终稿',
+            label: ' ',
             slot: 'richtext',
+          },
+          {
+            label: ' ',
+            field: 'nextstep',
+            component: 'Input',
+            colProps: { span: 24 },
+            slot: 'nextstep',
           },
         ],
         labelWidth: 100,
@@ -168,8 +179,9 @@
         baseColProps: { span: 24 },
         showResetButton: false,
         submitButtonOptions: {
-          text: '复制',
+          text: '下一步',
         },
+        showActionButtonGroup: false,
       });
 
       onMounted(() => {
@@ -186,37 +198,54 @@
       watch(
         () => [props.paper?.body],
         () => {
-          //console.log('step3', props.paper);
           if (!isMounted.value) return;
           setFieldsValue({ subject: props.paper?.subject });
-          if (props.paper) richText.value = props.paper.body;
-          // console.log('step3');
+          editorRef.value.setHtml(props.paper?.body);
         },
         { immediate: true },
       );
 
       const handleCreated = (editor) => {
-        //console.log('created', editor);
+        console.log('created', editor);
         editorRef.value = editor; // 记录 editor 实例，重要！
+        //editor.setHtml(``);
         // editor.on('modalOrPanelShow', (modalOrPanel) => {
         //   console.log(modalOrPanel);
         // });
       };
 
+      const handleChange = (/*editor*/) => {};
+
+      // function handleStarting() {
+      //   editorRef.value.setHtml('');
+      //   editorRef.value.focus();
+      //   //editorRef.value
+      //   //console.log(recommandationOptions.value);
+      // }
+
+      // function handleGenerated(result: any) {
+      //   let text = editorRef.value.getText();
+      //   text += result;
+      //   editorRef.value.setHtml(text);
+      //   editorRef.value.move(text.length);
+      //   //if (result === '\n') editorRef.value.focus(true); //
+      //   //editorRef.value
+      //   //console.log(recommandationOptions.value);
+      // }
+
       async function stepPrev() {
         emit('prev');
       }
 
-      async function generate() {
+      async function revision() {
         if (!editorRef.value.selection || editorRef.value.getSelectionText().length < 1) {
-          createWarningModal({ title: '提示', content: '请先选择需要修改的内容' });
+          createWarningModal({ title: '提示', content: '请先选择需要重写的内容' });
           return;
         }
         openRevisionModal(true, {
-          messages: chatMessages,
           editor: editorRef.value,
           paper: props.paper,
-          part: editorRef.value.getSelectionText(),
+          old: editorRef.value.getSelectionText(),
         });
       }
 
@@ -229,9 +258,8 @@
 
       return {
         register,
-        handleSubmit,
-        generate,
         stepPrev,
+        handleSubmit,
         loading,
         editorRef,
         mode: 'default',
@@ -239,14 +267,19 @@
         toolbarConfig,
         editorConfig,
         handleCreated,
+        handleChange,
         registerRevisionModal,
         openRevisionModal,
+        submit,
+        // handleGenerated,
+        // handleStarting,
+        revision,
       };
     },
   });
 </script>
 <style lang="less" scoped>
-  .step3 {
+  .step4 {
     width: 90%;
     margin: 0 auto;
   }

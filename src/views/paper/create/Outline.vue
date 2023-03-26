@@ -24,8 +24,8 @@
       </template></BasicForm
     ><OutlineGenModal
       @register="registerOutlineGenModal"
+      @starting="handleStarting"
       @generated="handleGenerated"
-      @clearoutline="handleClearOutline"
     />
   </div>
 </template>
@@ -122,7 +122,7 @@
           //   return;
           // }
           openOutlineGenModal(true, {
-            editor: editorRef.value,
+            editor: editor,
             paper: props.paper,
             part: text,
           });
@@ -225,22 +225,11 @@
         //   console.log(modalOrPanel);
         // });
       };
+
       const handleChange = (/*editor*/) => {};
 
-      const printHtml = () => {
-        const editor = editorRef.value;
-        if (editor == null) return;
-        console.log(editor.getHtml());
-      };
-
-      const disable = () => {
-        const editor = editorRef.value;
-        if (editor == null) return;
-        editor.disable();
-      };
-
-      function handleClearOutline() {
-        editorRef.value.clear();
+      function handleStarting() {
+        editorRef.value.setHtml('');
         editorRef.value.focus();
         //editorRef.value
         //console.log(recommandationOptions.value);
@@ -250,7 +239,8 @@
         let text = editorRef.value.getText();
         text += result;
         editorRef.value.setHtml(text);
-        editorRef.value.move(result.length);
+        editorRef.value.move(text.length);
+        //if (result === '\n') editorRef.value.focus(true); //
         //editorRef.value
         //console.log(recommandationOptions.value);
       }
@@ -293,11 +283,9 @@
         handleChange,
         registerOutlineGenModal,
         openOutlineGenModal,
-        printHtml,
-        disable,
         submit,
         handleGenerated,
-        handleClearOutline,
+        handleStarting,
       };
     },
   });

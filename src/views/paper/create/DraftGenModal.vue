@@ -1,7 +1,7 @@
 <!-- eslint-disable vue/no-v-html -->
 <template>
   <BasicModal
-    width="800px"
+    width="640px"
     title="生成初稿"
     okText="保存"
     v-bind="$attrs"
@@ -12,18 +12,19 @@
     :maskClosable="false"
     :keyboard="false"
     :okButtonProps="getOkButtonProps"
+    :show-ok-btn="false"
     :cancelButtonProps="{ disabled: isGenerating }"
   >
     <div class="pt-3px pr-3px">
       <BasicForm @register="regForm" ref="formRef" />
-      <a-alert
+      <!--a-alert
         message="根据您提供的补充资料，系统按照提案的大纲生成全文内容，可以限定字数。"
         show-icon
-      />
+      /-->
     </div>
-    <div class="pl-5px pt-5px pr-5px" v-html="getBodyHtml"> </div>
+    <!--div class="pl-5px pt-5px pr-5px" v-html="getBodyHtml"> </div-->
     <template #centerFooter>
-      <a-button @click="handleGenerate" color="success" :loading="isGenerating">
+      <a-button @click="handleGenerate" type="primary" :loading="isGenerating">
         {{ getGenerateBtnText }}
       </a-button>
     </template>
@@ -33,15 +34,10 @@
   import { defineComponent, ref, computed, PropType } from 'vue';
   import { Descriptions, FormInstance, Alert, Divider } from 'ant-design-vue';
   import { BasicModal, useModalInner } from '/@/components/Modal';
-  //   import { BasicTable, useTable } from '/@/components/Table';
-  // hooks
   import { useMessage } from '/@/hooks/web/useMessage';
-  // utils
-  import { useI18n } from '/@/hooks/web/useI18n';
-  import { chatGPT } from '/@/api/openAI';
+  import { chatGPTStream } from '/@/api/openAI';
   import { BasicForm, useForm } from '/@/components/Form/index';
   import { ChatParams } from '/@/api/model/openAIModel';
-  import { deepCopy } from 'windicss/utils';
 
   const { createMessage, createErrorModal } = useMessage();
   export default defineComponent({
@@ -59,16 +55,16 @@
         default: () => [],
       },
     },
-    emits: ['change', 'register', 'delete'],
-    setup(props, { emit }) {
-      const body = ref('');
+    emits: ['generated', 'register', 'starting'],
+    setup(_, { emit }) {
       var modalParams;
+      const outlineRows = ref(2);
+      const additionRows = ref(2);
       const isGenerating = ref(false);
 
-      const { t } = useI18n();
       const [regModal, { closeModal, redoModalHeight }] = useModalInner((data) => {
         modalParams = data;
-        setFieldsValue({ outline: modalParams.part });
+        setFieldsValue({ outline: modalParams.paper.outline });
       });
 
       const formRef = ref<FormInstance>();
@@ -76,6 +72,7 @@
         regForm,
         {
           setFieldsValue,
+          getFieldsValue,
           // setProps
         },
       ] = useForm({
@@ -85,7 +82,14 @@
             component: 'InputTextArea',
             componentProps: {
               readonly: false,
-              rows: 5,
+              rows: outlineRows,
+              onfocus: () => {
+                outlineRows.value = 10;
+                additionRows.value = 2;
+              },
+              onblur: () => {
+                //outlineRows.value = 3;
+              },
             },
             label: '提案大纲',
             required: false,
@@ -94,31 +98,54 @@
             field: 'addition',
             component: 'InputTextArea',
             componentProps: {
-              placeholder: '请输入具体资料或者资料链接',
-              rows: 5,
+              placeholder: '根据补充资料和提案大纲，生成正文。',
+              rows: additionRows,
+              onfocus: () => {
+                additionRows.value = 10;
+                outlineRows.value = 2;
+              },
+              onblur: () => {
+                //additionRows.value = 3;
+              },
             },
             label: '补充资料',
             required: false,
-            defaultValue: 'https://www.zhihu.com/question/271793882',
+            //defaultValue: 'https://www.zhihu.com/question/271793882',
           },
           {
-            field: 'words',
-            component: 'InputNumber',
             label: '字数要求',
+            field: 'words',
+            component: 'Select',
             componentProps: {
-              min: 0,
-              max: 9999,
+              placeholder: '不限制',
+              options: [
+                { label: '不限制', value: 0 },
+                { value: 300 },
+                { value: 500 },
+                { value: 1000 },
+                { value: 1500 },
+                { value: 2000 },
+              ],
+              mode: 'SECRET_COMBOBOX_MODE_DO_NOT_USE',
+              maxLength: 256,
             },
-            colProps: {
-              span: 6,
-            },
-            defaultValue: 1000,
+            defaultValue: 0,
+            show: true,
           },
-          {
-            field: 'div1',
-            component: 'Divider',
-            label: '以下为新生成的内容',
-          },
+          // {
+          //   field: '',
+          //   component: 'InputNumber',
+          //   label: '',
+          //   componentProps: {
+          //     min: 0,
+          //     max: 9999,
+          //     step: 50,
+          //   },
+          //   colProps: {
+          //     span: 6,
+          //   },
+          //   defaultValue: 1000,
+          // },
         ],
         labelWidth: 100,
         actionColOptions: {
@@ -129,10 +156,6 @@
         showActionButtonGroup: false,
       });
 
-      const getBodyHtml = computed(() => {
-        return body.value.replaceAll('\n', '<br>');
-      });
-
       const getOkButtonProps = computed(() => {
         return {
           disabled: isGenerating.value,
@@ -140,121 +163,102 @@
       });
 
       const getGenerateBtnText = computed(() => {
-        return isGenerating.value ? '生成中' : '开始生成';
+        return isGenerating.value ? '处理中' : '生成';
       });
 
       async function handleGenerate() {
+        if (isGenerating.value) {
+          isGenerating.value = false;
+          return;
+        }
+
+        const values = getFieldsValue();
         try {
           isGenerating.value = true;
-          const values = formRef.value?.getFieldsValue();
+          emit('starting');
+          additionRows.value = 2;
+          outlineRows.value = 2;
 
-          if (modalParams.isAll) {
-            //generate entire body of the paper
-            const messages: ChatParams[] = [];
+          const messages: ChatParams[] = [];
+          messages.push({
+            role: 'system',
+            content: `您是南京市政协委员，需要撰写题目为“${modalParams.paper.subject}”的政协提案`,
+          });
+          if (values.addition?.length > 0)
+            messages.push({ role: 'user', content: `学习以下资料：\n${values.addition}` });
+          if (values.words > 0)
             messages.push({
-              role: 'system',
-              content: `您是南京市政协委员，需要撰写题目为“${modalParams.paper.subject}”的政协提案`,
+              role: 'user',
+              content: `按照下面的政协提案大纲撰写提案，要求提案在${values.words}个汉字左右：\n${modalParams.paper.outline}`,
             });
-            if (values?.addition)
-              messages.push({
-                role: 'user',
-                content: `仔细学习下面的资料：\n${values?.addition}`,
-              });
-            if (Number(values?.words) > 0)
-              messages.push({
-                role: 'user',
-                content: `按照下面的政协提案大纲撰写提案，要求提案在${values?.words}个汉字左右：\n${modalParams.paper.outline}`,
-              });
-            else
-              messages.push({
-                role: 'user',
-                content: `按照下面的政协提案大纲撰写提案：\n${modalParams.paper.outline}`,
-              });
-            const msg = await chatGPT(messages);
-            body.value = msg.content;
-            //messages.push(msg);
-          } else {
-            //generate part body of the paper
-            const messages: ChatParams[] = modalParams.paper.messages
-              ? deepCopy(modalParams.paper.messages)
-              : [];
-            if (messages.length < 1) {
-              messages.push({
-                role: 'system',
-                content: `您是南京市政协委员，需要撰写题目为“${modalParams.paper.subject}”的政协提案`,
-              });
-              if (values?.addition)
-                messages.push({
-                  role: 'user',
-                  content: `学习下面的资料：\n${values?.addition}`,
-                });
-              messages.push({
-                role: 'user',
-                content: `学习下面这个政协提案的大纲：\n${modalParams.editor.getText()}`,
-              });
-            }
+          else
+            messages.push({
+              role: 'user',
+              content: `按照下面的政协提案大纲撰写提案：\n${modalParams.paper.outline}`,
+            });
 
-            if (Number(values?.words) > 0)
-              messages.push({
-                role: 'user',
-                content: `根据下面这部分提案大纲生成内容，字数控制在${values?.words}个汉字左右：\n${modalParams.part}`,
+          let part = '';
+          const rawResponse = await chatGPTStream(messages);
+          const writableStream = new WritableStream({
+            write: (instream) => {
+              const chunkString = new TextDecoder('utf-8').decode(instream);
+              chunkString.split('\n').forEach((chunk) => {
+                if (chunk.length < 1) return;
+                if (chunk.startsWith('data: ')) {
+                  //console.log(chunk);
+                  if (chunk === 'data: [DONE]' /* || !isGenerating.value*/) {
+                    emit('generated', part);
+                    isGenerating.value = false;
+                    closeModal();
+                    return;
+                  }
+                  try {
+                    const json = JSON.parse(chunk.substring(6));
+                    const text = json.choices[0].delta?.content || '';
+                    part += text;
+                    //redoModalHeight();
+                    if (part.length > 10 || part.indexOf('\n') >= 0) {
+                      console.log(part);
+                      emit('generated', part);
+                      part = '';
+                    }
+                  } catch (e) {
+                    //controller.error(e);
+                    console.log('[Parse stream error]', e);
+                    console.log(chunk);
+                  }
+                } else {
+                  console.log('Bad stream data:', chunk);
+                }
               });
-            else
-              messages.push({
-                role: 'user',
-                content: `根据下面这部分提案大纲生成内容：\n${modalParams.part}`,
-              });
-            const msg = await chatGPT(messages);
-            body.value = msg.content;
-            //messages.push(msg);
-          }
-          //modalParams.messages = messages;
-          redoModalHeight();
-          //emit('next', values, outline, content);
+            },
+          });
+          rawResponse.body?.pipeTo(writableStream);
         } catch (error) {
+          isGenerating.value = false;
+          console.log(error);
           createErrorModal({
             title: '提示',
             content: '网络错误！',
           });
         }
-        isGenerating.value = false;
       }
 
-      //   点击保存
       function handleOk() {
-        //console.log()
-        if (body.value.length > 0) {
-          const editor = modalParams.editor;
-          if (modalParams.isAll) {
-            editor.clear();
-            editor.setHtml(body.value);
-          } else {
-            if (!editor.selection) editor.restoreSelection();
-            if (editor.selection) editor.insertText(body.value);
-            else {
-              createErrorModal({
-                title: '提示',
-                content: '保存失败',
-              });
-            }
-          }
-        }
         closeModal();
       }
 
-      // 点击关闭：则所有操作不保存，包括上传的
       async function handleCloseFunc() {
         if (!isGenerating.value) {
           return true;
         } else {
-          createMessage.warning(`请等待生成结束后操作`);
+          createMessage.warning(`请等待处理结束后操作`);
           return false;
         }
       }
 
       function handleVisibleChange(v) {
         if (v) {
-          body.value = '';
           redoModalHeight();
         }
         //v && props.userData && nextTick(() => onDataReceive(props.userData));
@@ -267,10 +271,7 @@
         handleGenerate,
         handleOk,
         handleCloseFunc,
-        getBodyHtml,
         getGenerateBtnText,
-        t,
-        body,
         handleVisibleChange,
         regForm,
         formRef,
@@ -278,26 +279,3 @@
     },
   });
 </script>
-<style lang="less">
-  .upload-modal {
-    .ant-upload-list {
-      display: none;
-    }
-
-    .ant-table-wrapper .ant-spin-nested-loading {
-      padding: 0;
-    }
-
-    &-toolbar {
-      display: flex;
-      align-items: center;
-      margin-bottom: 8px;
-
-      &__btn {
-        margin-left: 8px;
-        text-align: right;
-        flex: 1;
-      }
-    }
-  }
-</style>

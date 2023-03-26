@@ -15,29 +15,32 @@
           v-model="richText"
           style="height: 400px; border: 1px solid #ccc; overflow-y: hidden"
           @onCreated="handleCreated"
+          @onChange="handleChange"
         /> </template
-      ><template #resetBefore
-        ><!--a-button class="mb-2" type="primary" @click="genAll()"> 生成选中 </a-button-->&nbsp;&nbsp;
-        <a-button class="mb-2" @click="genAll()" color="success"> 生成初稿 </a-button
-        >&nbsp;&nbsp;<a-button class="mb-2" @click="stepPrev()"> 上一步 </a-button>&nbsp;
+      ><template #operation><a-button @click="genDraft()"> 生成 </a-button></template
+      ><template #nextstep
+        ><a-button class="mb-4" block @click="stepPrev()"> 返回 </a-button>
+        <a-button type="primary" block @click="submit()"> 下一步 </a-button>
       </template></BasicForm
-    >
-    <DraftGenModal @register="registerDraftGenModal" />
+    ><DraftGenModal
+      @register="registerDraftGenModal"
+      @starting="handleStarting"
+      @generated="handleGenerated"
+    />
   </div>
 </template>
 <script lang="ts">
-  import { defineComponent, watch, onMounted, ref, shallowRef, onBeforeUnmount } from 'vue';
-  import { BasicForm, useForm } from '/@/components/Form';
-  import { Descriptions } from 'ant-design-vue';
-  import { PaperInfo } from '../usePaper';
-  import { useMessage } from '/@/hooks/web/useMessage';
   import '@wangeditor/editor/dist/css/style.css';
   import { Editor, Toolbar } from '@wangeditor/editor-for-vue';
+  import { defineComponent, watch, onMounted, ref, onBeforeUnmount, shallowRef } from 'vue';
+  import { BasicForm, useForm } from '/@/components/Form';
+  import { Alert, Divider, Descriptions } from 'ant-design-vue';
+  import { PaperInfo } from '../usePaper';
+  import { useMessage } from '/@/hooks/web/useMessage';
   import { IButtonMenu, IDomEditor } from '@wangeditor/editor';
   import { Boot } from '@wangeditor/editor';
   import DraftGenModal from './DraftGenModal.vue';
   import { useModal } from '/@/components/Modal';
-  import { ChatParams } from '/@/api/model/openAIModel';
 
   const { createWarningModal } = useMessage();
 
@@ -47,6 +50,8 @@
       Editor,
       Toolbar,
       BasicForm,
+      [Alert.name]: Alert,
+      [Divider.name]: Divider,
       [Descriptions.name]: Descriptions,
       [Descriptions.Item.name]: Descriptions.Item,
     },
@@ -55,15 +60,15 @@
         type: Object as PropType<PaperInfo>,
       },
     },
-    emits: ['prev', 'next'],
+    emits: ['next', 'prev'],
     setup(props, { emit }) {
       const isMounted = ref(false);
       const loading = ref(false);
-      const chatMessages: ChatParams[] = [];
 
       const [registerDraftGenModal, { openModal: openDraftGenModal }] = useModal();
 
       const editorRef = shallowRef();
+      // 内容 HTML
       const richText = ref('');
 
       class CreateButtonMenu implements IButtonMenu {
@@ -110,8 +115,7 @@
           }
 
           openDraftGenModal(true, {
-            messages: chatMessages,
-            editor: editorRef.value,
+            editor: editor,
             isAll: false,
             paper: props.paper,
             part: value as string,
@@ -143,7 +147,7 @@
         },
       };
 
-      const [register, { setFieldsValue }] = useForm({
+      const [register, { setFieldsValue, submit }] = useForm({
         schemas: [
           {
             field: 'subject',
@@ -153,10 +157,23 @@
             defaultValue: '',
           },
           {
+            field: 'operation',
+            component: 'Input',
+            label: '初稿',
+            slot: 'operation',
+          },
+          {
             field: 'body',
             component: 'InputTextArea',
-            label: '初稿',
+            label: ' ',
             slot: 'richtext',
+          },
+          {
+            label: ' ',
+            field: 'nextstep',
+            component: 'Input',
+            colProps: { span: 24 },
+            slot: 'nextstep',
           },
         ],
         labelWidth: 100,
@@ -168,6 +185,7 @@
         submitButtonOptions: {
           text: '下一步',
         },
+        showActionButtonGroup: false,
       });
 
       onMounted(() => {
@@ -182,19 +200,17 @@
       });
 
       watch(
-        () => [props.paper?.outline],
+        () => [props.paper?.current],
         () => {
-          //console.log('step3', props.paper);
           if (!isMounted.value) return;
           setFieldsValue({ subject: props.paper?.subject });
-          //if (props.paper) richText.value = props.paper.outline;
-          // console.log('step3');
+          if (props.paper?.current === 2 && editorRef.value.getText().length < 1) genDraft();
         },
         { immediate: true },
       );
 
       const handleCreated = (editor) => {
-        //console.log('created', editor);
+        console.log('created', editor);
         editorRef.value = editor; // 记录 editor 实例，重要！
         //editor.setHtml(``);
         // editor.on('modalOrPanelShow', (modalOrPanel) => {
@@ -202,17 +218,33 @@
         // });
       };
 
+      const handleChange = (/*editor*/) => {};
+
+      function handleStarting() {
+        editorRef.value.setHtml('');
+        editorRef.value.focus();
+        //editorRef.value
+        //console.log(recommandationOptions.value);
+      }
+
+      function handleGenerated(result: any) {
+        let text = editorRef.value.getText();
+        text += result;
+        editorRef.value.setHtml(text);
+        editorRef.value.move(text.length);
+        //if (result === '\n') editorRef.value.focus(true); //
+        //editorRef.value
+        //console.log(recommandationOptions.value);
+      }
+
       async function stepPrev() {
         emit('prev');
       }
 
-      async function genAll() {
+      async function genDraft() {
         openDraftGenModal(true, {
-          messages: chatMessages,
           editor: editorRef.value,
-          isAll: true,
           paper: props.paper,
-          part: props.paper?.outline,
         });
       }
 
@@ -229,9 +261,8 @@
 
       return {
         register,
-        handleSubmit,
-        genAll,
         stepPrev,
+        handleSubmit,
         loading,
         editorRef,
         mode: 'default',
@@ -239,8 +270,13 @@
         toolbarConfig,
         editorConfig,
         handleCreated,
+        handleChange,
         registerDraftGenModal,
         openDraftGenModal,
+        submit,
+        handleGenerated,
+        handleStarting,
+        genDraft,
       };
     },
   });

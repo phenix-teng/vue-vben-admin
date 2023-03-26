@@ -13,7 +13,11 @@
           <a-button type="primary" block @click="submit()"> 下一步 </a-button>&nbsp;
         </template></BasicForm
       >
-      <SubjectGenModal @register="registerSubjectGenModal" @generated="handleGenerated" />
+      <SubjectGenModal
+        @register="registerSubjectGenModal"
+        @starting="handleStarting"
+        @generated="handleGenerated"
+      />
     </div>
     <!--a-divider />
     <h3>说明</h3>
@@ -135,6 +139,10 @@
         },
       });
 
+      function handleStarting() {
+        recommandationOptions.value = [];
+      }
+
       function handleGenerated(result: any) {
         if (result != '' && result[result.length - 1] != '：') {
           let val = result.indexOf('.') < 0 ? result.trim() : result.split('.')[1].trim();
@@ -144,7 +152,6 @@
       }
 
       async function genSubject() {
-        recommandationOptions.value = [];
         openSubjectGenModal();
       }
 
@@ -159,6 +166,7 @@
         loading,
         registerSubjectGenModal,
         openSubjectGenModal,
+        handleStarting,
         handleGenerated,
         getFieldsValue,
         submit,
@@ -190,13 +198,5 @@
     p {
       color: @text-color;
     }
-  }
-
-  .pay-select {
-    width: 20%;
-  }
-
-  .pay-input {
-    width: 70%;
   }
 </style>

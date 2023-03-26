@@ -1,4 +1,3 @@
-<!-- eslint-disable vue/no-v-html -->
 <template>
   <BasicModal
     width="640px"
@@ -16,13 +15,17 @@
     :show-ok-btn="false"
     :cancelButtonProps="{ disabled: isGenerating }"
   >
-    <div class="pt-3px pr-3px">
-      <BasicForm @register="regForm" ref="formRef" />
-      <!--a-alert message="根据您提供的参考资料内容，系统为您推荐主题。" show-icon /-->
+    <div>
+      <a-textarea
+        v-model:value="addition"
+        placeholder="请提供参考资料的URL地址，系统根据资料内容推荐主题。"
+        :rows="additionRows"
+        @focus="handleFocus()"
+        @blur="handleBlur()"
+      />
     </div>
-    <!--div class="pl-5px pt-5px pr-5px" v-html="getBodyHtml"> </div-->
     <template #centerFooter>
-      <a-button @click="handleGenerate" color="success" :loading="isGenerating">
+      <a-button @click="handleGenerate" type="primary" :loading="isGenerating">
         {{ getGenerateBtnText }}
       </a-button>
     </template>
@@ -30,18 +33,16 @@
 </template>
 <script lang="ts">
   import { defineComponent, ref, computed, PropType } from 'vue';
-  import { Descriptions, FormInstance, Alert, Divider } from 'ant-design-vue';
+  import { Descriptions, Alert, Divider } from 'ant-design-vue';
   import { BasicModal, useModalInner } from '/@/components/Modal';
   import { useMessage } from '/@/hooks/web/useMessage';
   import { chatGPTStream } from '/@/api/openAI';
-  import { BasicForm, useForm } from '/@/components/Form/index';
   import { ChatParams } from '/@/api/model/openAIModel';
 
   const { createMessage, createErrorModal } = useMessage();
   export default defineComponent({
     components: {
       BasicModal,
-      BasicForm,
       [Alert.name]: Alert,
       [Divider.name]: Divider,
       [Descriptions.name]: Descriptions,
@@ -53,77 +54,33 @@
         default: () => [],
       },
     },
-    emits: ['register', 'generated'],
+    emits: ['register', 'starting', 'generated'],
     setup(_, { emit }) {
-      const additionRows = ref(2);
-      const body = ref('');
-      var modalParams;
       const isGenerating = ref(false);
+      const additionRows = ref(10);
+      const addition = ref('');
+      //var modalParams;
 
-      const [regModal, { closeModal, redoModalHeight }] = useModalInner((data) => {
-        modalParams = data;
-        setFieldsValue({ outline: modalParams.part });
+      const [regModal, { closeModal, redoModalHeight }] = useModalInner((/*data*/) => {
+        //modalParams = data;
       });
 
-      const formRef = ref<FormInstance>();
-      const [
-        regForm,
-        {
-          setFieldsValue,
-          getFieldsValue,
-          // setProps
-        },
-      ] = useForm({
-        schemas: [
-          {
-            field: 'addition',
-            component: 'InputTextArea',
-            componentProps: {
-              placeholder: '根据您提供的参考资料内容，系统为您推荐主题。',
-              rows: additionRows,
-              onfocus: () => {
-                additionRows.value = 10;
-              },
-              onblur: () => {
-                additionRows.value = 2;
-              },
-            },
-            label: '参考资料',
-            required: false,
-            //defaultValue: 'https://www.zhihu.com/question/271793882',
-          },
-          {
-            field: 'amount',
-            component: 'InputNumber',
-            label: '推荐数量',
-            componentProps: {
-              min: 3,
-              max: 10,
-            },
-            colProps: {
-              span: 6,
-            },
-            defaultValue: 5,
-            show: false,
-          },
-        ],
-        labelWidth: 80,
-        baseColProps: { span: 24 },
-        showActionButtonGroup: false,
-      });
+      function handleFocus() {
+        additionRows.value = 10;
+      }
 
-      const getBodyHtml = computed(() => {
-        return body.value.replaceAll('\n', '<br>');
-      });
+      function handleBlur() {
+        //additionRows.value = 2;
+      }
 
       const getOkButtonProps = computed(() => {
         return {
-          disabled: isGenerating.value || !body.value.length,
+          disabled: isGenerating.value,
         };
       });
 
       const getGenerateBtnText = computed(() => {
-        return isGenerating.value ? '推荐中' : '开始推荐';
+        return isGenerating.value ? '处理中' : '推荐';
       });
 
       async function handleGenerate() {
@@ -134,16 +91,20 @@
 
         try {
           isGenerating.value = true;
-          const values = getFieldsValue();
+          emit('starting');
+          additionRows.value = 2;
 
           const messages: ChatParams[] = [];
           messages.push({ role: 'system', content: `您是南京市政协委员，准备写一份政协提案` });
           messages.push({
             role: 'user',
-            content: `请读取以下资料，推荐${values.amount}个主题，主题格式是“关于...的提案”，只需要列出主题即可：\n${values.addition}`,
+            content:
+              addition.value.length > 0
+                ? `请读取以下资料，推荐5个政协提案主题，主题格式是“关于...的提案”，只需要列出主题部分即可：\n${addition.value}`
+                : `请推荐5个政协提案主题，主题格式是“关于...的提案”，只需要列出主题部分即可。`,
           });
 
-          body.value = '';
+          let part = '';
           const rawResponse = await chatGPTStream(messages);
           const writableStream = new WritableStream({
             write: (instream) => {
@@ -153,8 +114,8 @@
                 if (chunk.startsWith('data: ')) {
                   //console.log(chunk);
                   if (chunk === 'data: [DONE]' /* || !isGenerating.value*/) {
+                    emit('generated', part);
                     isGenerating.value = false;
-                    emit('generated', body.value);
                     closeModal();
                     return;
                   }
@@ -170,12 +131,12 @@
                     // }
                     const json = JSON.parse(chunk.substring(6));
                     const text = json.choices[0].delta?.content || '';
-                    body.value += text;
-                    redoModalHeight();
+                    part += text;
+                    //redoModalHeight();
                     if (text === '\n') {
-                      console.log(body.value);
-                      emit('generated', body.value);
-                      body.value = '';
+                      console.log(part);
+                      emit('generated', part);
+                      part = '';
                     }
                   } catch (e) {
                     //controller.error(e);
@@ -189,12 +150,6 @@
             },
           });
           rawResponse.body?.pipeTo(writableStream);
-
-          //const msg = await chatGPT(messages);
-          //body.value = msg.content;
-          //emit('generated', msg.content);
-          //isGenerating.value = false;
-          //closeModal();
         } catch (error) {
           isGenerating.value = false;
           console.log(error);
@@ -213,14 +168,13 @@
         if (!isGenerating.value) {
           return true;
         } else {
-          createMessage.warning(`请等待推荐结束后操作`);
+          createMessage.warning(`请等待处理结束后操作`);
           return false;
         }
       }
 
       function handleVisibleChange(v) {
         if (v) {
-          body.value = '';
           redoModalHeight();
         }
         //v && props.userData && nextTick(() => onDataReceive(props.userData));
@@ -233,12 +187,12 @@
         handleGenerate,
         handleOk,
         handleCloseFunc,
-        getBodyHtml,
         getGenerateBtnText,
-        body,
         handleVisibleChange,
-        regForm,
-        formRef,
+        additionRows,
+        handleFocus,
+        handleBlur,
+        addition,
       };
     },
   });
