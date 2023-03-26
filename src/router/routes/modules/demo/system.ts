@@ -41,6 +41,7 @@ const system: AppRouteModule = {
       meta: {
         title: t('routes.demo.system.role'),
         ignoreKeepAlive: true,
+        hideMenu: true,
       },
       component: () => import('/@/views/demo/system/role/index.vue'),
     },
@@ -51,6 +52,7 @@ const system: AppRouteModule = {
       meta: {
         title: t('routes.demo.system.menu'),
         ignoreKeepAlive: true,
+        hideMenu: true,
       },
       component: () => import('/@/views/demo/system/menu/index.vue'),
     },
@@ -60,6 +62,7 @@ const system: AppRouteModule = {
       meta: {
         title: t('routes.demo.system.dept'),
         ignoreKeepAlive: true,
+        hideMenu: true,
       },
       component: () => import('/@/views/demo/system/dept/index.vue'),
     },

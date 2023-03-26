@@ -13,6 +13,7 @@ const setup: AppRouteModule = {
     hideChildrenInMenu: true,
     icon: 'whh:paintroll',
     title: t('routes.demo.setup.page'),
+    hideMenu: true,
   },
   children: [
     {
