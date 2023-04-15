@@ -4,8 +4,8 @@
       <a-steps :current="current">
         <a-step title="选择主题" />
         <a-step title="创建大纲" />
-        <a-step title="生成初稿" />
-        <a-step title="修改定稿" />
+        <a-step title="生成正文" />
+        <!--a-step title="修改定稿" /-->
       </a-steps>
     </div>
     <div class="mt-5">
@@ -16,13 +16,13 @@
         @prev="handleStep2Prev"
         @next="handleStep2Next"
       />
-      <Step3
+      <!--Step3
         :paper="paper"
         v-show="current === 2"
         @prev="handleStep3Prev"
         @next="handleStep3Next"
-      />
-      <Step4 :paper="paper" v-show="current === 3" @prev="handleStep4Prev" />
+      /-->
+      <Step3 :paper="paper" v-show="current === 2" @prev="handleStep3Prev" />
     </div>
   </PageWrapper>
 </template>
@@ -30,8 +30,8 @@
   import { defineComponent, ref } from 'vue';
   import Step1 from './Subject.vue';
   import Step2 from './Outline.vue';
-  import Step3 from './Draft.vue';
-  import Step4 from './Revision.vue';
+  //import Step3 from './Draft.vue';
+  import Step3 from './Revision.vue';
   import { PageWrapper } from '/@/components/Page';
   import { Steps } from 'ant-design-vue';
   import { PaperInfo } from '../usePaper';
@@ -42,7 +42,7 @@
       Step1,
       Step2,
       Step3,
-      Step4,
+      //Step4,
       PageWrapper,
       [Steps.name]: Steps,
       [Steps.Step.name]: Steps.Step,

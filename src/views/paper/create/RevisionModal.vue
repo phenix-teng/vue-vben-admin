@@ -13,6 +13,7 @@
     :keyboard="false"
     :okButtonProps="getOkButtonProps"
     :cancelButtonProps="{ disabled: isGenerating }"
+    :loading="isGenerating"
   >
     <div class="pt-3px pr-3px">
       <BasicForm @register="regForm" ref="formRef" />
@@ -23,7 +24,7 @@
     </div>
     <!--div class="pl-5px pt-5px pr-5px" v-html="getNewBodyHtml"> </div-->
     <template #centerFooter>
-      <a-button @click="handleGenerate" type="primary" :loading="isGenerating">
+      <a-button @click="handleGenerate" type="primary">
         {{ getGenerateBtnText }}
       </a-button>
     </template>
@@ -37,6 +38,7 @@
   import { chatGPTStream } from '/@/api/openAI';
   import { BasicForm, useForm } from '/@/components/Form/index';
   import { ChatParams } from '/@/api/model/openAIModel';
+  import { ParsedEvent, ReconnectInterval, createParser } from 'eventsource-parser';
 
   const { createMessage, createErrorModal } = useMessage();
   export default defineComponent({
@@ -59,6 +61,7 @@
       var modalParams;
       const additionRows = ref(2);
       const isGenerating = ref(false);
+      const controller = ref<AbortController>();
       const newBody = ref('');
 
       const [regModal, { closeModal, redoModalHeight }] = useModalInner((data) => {
@@ -77,27 +80,28 @@
       ] = useForm({
         schemas: [
           {
+            label: '原内容',
             field: 'old',
             component: 'InputTextArea',
             componentProps: {
               readonly: false,
               rows: 5,
             },
-            label: '原内容',
             required: false,
           },
           {
+            label: '新内容',
             field: 'new',
             component: 'InputTextArea',
             componentProps: {
-              readonly: false,
+              readonly: true,
               autoSize: true,
             },
-            label: '新内容',
             required: false,
             //slot: 'new',
           },
           {
+            label: '补充资料',
             field: 'addition',
             component: 'InputTextArea',
             componentProps: {
@@ -107,7 +111,6 @@
                 additionRows.value = 10;
               },
             },
-            label: '补充资料',
             required: false,
             //defaultValue: 'https://www.zhihu.com/question/271793882',
           },
@@ -151,11 +154,12 @@
       });
 
       const getGenerateBtnText = computed(() => {
-        return isGenerating.value ? '处理中' : '重写';
+        return isGenerating.value ? '停止' : '重写';
       });
 
       async function handleGenerate() {
         if (isGenerating.value) {
+          controller.value?.abort();
           isGenerating.value = false;
           return;
         }
@@ -185,51 +189,49 @@
           });
 
           newBody.value = '';
-          const rawResponse = await chatGPTStream(messages);
+          controller.value = new AbortController();
+          const response = await chatGPTStream(messages, controller.value.signal);
+          const decoder = new TextDecoder('utf-8');
+
+          const streamParser = (event: ParsedEvent | ReconnectInterval) => {
+            if (event.type === 'event') {
+              const data = event.data;
+              if (data === '[DONE]') {
+                redoModalHeight();
+                isGenerating.value = false;
+                return;
+              }
+              try {
+                const json = JSON.parse(data);
+                const text = json.choices[0].delta?.content || '';
+                newBody.value += text;
+                setFieldsValue({ new: newBody.value });
+                redoModalHeight();
+              } catch (e) {
+                //controller.error(e);
+                console.log('[Parse stream error]', e);
+                console.log(data);
+              }
+            }
+          };
+
+          const parser = createParser(streamParser);
           const writableStream = new WritableStream({
             write: (instream) => {
-              const chunkString = new TextDecoder('utf-8').decode(instream);
-              chunkString.split('\n').forEach((chunk) => {
-                if (chunk.length < 1) return;
-                if (chunk.startsWith('data: ')) {
-                  //console.log(chunk);
-                  if (chunk === 'data: [DONE]' /* || !isGenerating.value*/) {
-                    //emit('generated', part);
-                    redoModalHeight();
-                    isGenerating.value = false;
-                    return;
-                  }
-                  try {
-                    const json = JSON.parse(chunk.substring(6));
-                    const text = json.choices[0].delta?.content || '';
-                    newBody.value += text;
-                    setFieldsValue({ new: newBody.value });
-                    redoModalHeight();
-                    // if (part.length > 10 || part.indexOf('\n') >= 0) {
-                    //   console.log(part);
-                    //   //emit('generated', part);
-                    //   setFieldsValue({ new: getFieldsValue().new + part });
-                    //   part = '';
-                    // }
-                  } catch (e) {
-                    //controller.error(e);
-                    console.log('[Parse stream error]', e);
-                    console.log(chunk);
-                  }
-                } else {
-                  console.log('Bad stream data:', chunk);
-                }
-              });
+              parser.feed(decoder.decode(instream));
+              //console.log(decoder.decode(instream));
             },
           });
-          rawResponse.body?.pipeTo(writableStream);
+          response.body?.pipeTo(writableStream);
         } catch (error) {
-          isGenerating.value = false;
-          console.log(error);
-          createErrorModal({
-            title: '提示',
-            content: '网络错误！',
-          });
+          if (isGenerating.value) {
+            isGenerating.value = false;
+            console.log(error);
+            createErrorModal({
+              title: '提示',
+              content: '网络错误！',
+            });
+          }
         }
       }
 

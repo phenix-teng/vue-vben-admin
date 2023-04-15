@@ -17,12 +17,19 @@
           @onCreated="handleCreated"
           @onChange="handleChange"
         /> </template
-      ><template #operation><a-button @click="revision()"> 重写 </a-button></template
+      ><template #operation
+        ><a-button @click="revision()"> 重写 </a-button>&nbsp;&nbsp;<a-button @click="genDraft()">
+          生成全文
+        </a-button></template
       ><template #nextstep
         ><a-button class="mb-4" block @click="stepPrev()"> 返回 </a-button>
-        <a-button type="primary" block @click="submit()"> 复制保存 </a-button>
+        <a-button type="primary" block @click="submit()"> 复制正文 </a-button>
       </template></BasicForm
-    ><RevisionModal @register="registerRevisionModal" />
+    ><DraftGenModal
+      @register="registerDraftGenModal"
+      @starting="handleStarting"
+      @generated="handleGenerated"
+    /><RevisionModal @register="registerRevisionModal" />
   </div>
 </template>
 <script lang="ts">
@@ -35,6 +42,7 @@
   import { useMessage } from '/@/hooks/web/useMessage';
   import { IButtonMenu, IDomEditor } from '@wangeditor/editor';
   import { Boot } from '@wangeditor/editor';
+  import DraftGenModal from './DraftGenModal.vue';
   import RevisionModal from './RevisionModal.vue';
   import { useModal } from '/@/components/Modal';
   import { useCopyToClipboard } from '/@/hooks/web/useCopyToClipboard';
@@ -43,6 +51,7 @@
 
   export default defineComponent({
     components: {
+      DraftGenModal,
       RevisionModal,
       Editor,
       Toolbar,
@@ -63,6 +72,7 @@
       const loading = ref(false);
       const { clipboardRef, copiedRef } = useCopyToClipboard();
 
+      const [registerDraftGenModal, { openModal: openDraftGenModal }] = useModal();
       const [registerRevisionModal, { openModal: openRevisionModal }] = useModal();
 
       const editorRef = shallowRef();
@@ -155,7 +165,7 @@
           {
             field: 'operation',
             component: 'Input',
-            label: '终稿',
+            label: '正文',
             slot: 'operation',
           },
           {
@@ -196,11 +206,11 @@
       });
 
       watch(
-        () => [props.paper?.body],
+        () => [props.paper?.current],
         () => {
           if (!isMounted.value) return;
           setFieldsValue({ subject: props.paper?.subject });
-          editorRef.value.setHtml(props.paper?.body);
+          if (props.paper?.current === 2 && editorRef.value.getText().length < 1) genDraft();
         },
         { immediate: true },
       );
@@ -216,25 +226,32 @@
 
       const handleChange = (/*editor*/) => {};
 
-      // function handleStarting() {
-      //   editorRef.value.setHtml('');
-      //   editorRef.value.focus();
-      //   //editorRef.value
-      //   //console.log(recommandationOptions.value);
-      // }
+      function handleStarting() {
+        editorRef.value.setHtml('');
+        editorRef.value.focus();
+        //editorRef.value
+        //console.log(recommandationOptions.value);
+      }
 
-      // function handleGenerated(result: any) {
-      //   let text = editorRef.value.getText();
-      //   text += result;
-      //   editorRef.value.setHtml(text);
-      //   editorRef.value.move(text.length);
-      //   //if (result === '\n') editorRef.value.focus(true); //
-      //   //editorRef.value
-      //   //console.log(recommandationOptions.value);
-      // }
+      function handleGenerated(result: any) {
+        let text = editorRef.value.getText();
+        text += result;
+        editorRef.value.setHtml(text);
+        //editorRef.value.move(text.length);
+        //if (result === '\n') editorRef.value.focus(true); //
+        //editorRef.value
+        //console.log(recommandationOptions.value);
+      }
 
       async function stepPrev() {
         emit('prev');
+      }
+
+      async function genDraft() {
+        openDraftGenModal(true, {
+          editor: editorRef.value,
+          paper: props.paper,
+        });
       }
 
       async function revision() {
@@ -250,9 +267,14 @@
       }
 
       async function handleSubmit() {
+        if (editorRef.value.getText().length < 1) {
+          createWarningModal({ title: '提示', content: '请先生成正文' });
+          return;
+        }
+
         clipboardRef.value = editorRef.value.getText();
         if (unref(copiedRef)) {
-          createMessage.warning('已复制到粘贴板！');
+          createMessage.warning('已复制正文！');
         }
       }
 
@@ -268,12 +290,15 @@
         editorConfig,
         handleCreated,
         handleChange,
+        registerDraftGenModal,
+        openDraftGenModal,
         registerRevisionModal,
         openRevisionModal,
         submit,
-        // handleGenerated,
-        // handleStarting,
+        handleGenerated,
+        handleStarting,
         revision,
+        genDraft,
       };
     },
   });
