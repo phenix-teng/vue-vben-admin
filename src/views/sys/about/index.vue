@@ -1,17 +1,35 @@
 <template>
   <PageWrapper title="关于">
     <template #headerContent>
-      <div class="flex justify-between items-center">
-        <span class="flex-1">
-          <a :href="GITHUB_URL" target="_blank">{{ name }}</a>
-          是一个基于Vue3.0、Vite、 Ant-Design-Vue 、TypeScript
-          的后台解决方案，目标是为中大型项目开发,提供现成的开箱解决方案及丰富的示例,原则上不会限制任何代码用于商用。
-        </span>
-      </div>
+      <h1>欢迎使用我们的AI写作平台</h1>
+      <p
+        >我们的网站是一个基于人工智能技术的写作平台，为学生、学者和政府工作人员提供高质量、原创的论文、提案和工作报告。我们的AI系统可以快速处理大量数据，从而生成具有创新性和可靠性的作品。</p
+      >
+      <h2>我们的特点</h2>
+      <ul>
+        <li>高效性：我们的AI系统可以在短时间内生成大量的作品，从而节省时间和人力成本。</li>
+        <li
+          >创新性：由于AI系统可以模仿人类的创作思维和风格，因此可以生成具有创新性的作品，为学术界和政府部门带来新的可能性。</li
+        >
+        <li
+          >可靠性：我们的AI系统可以自动检测和修复语法错误和逻辑问题，从而确保作品的质量和可靠性。</li
+        >
+        <li>安全性：我们的网站严格遵守相关法律法规，保护用户的隐私和知识产权。</li>
+      </ul>
+      <h2>适用范围</h2>
+      <p>我们的网站适用于各种类型的论文、提案和工作报告，包括但不限于：</p>
+      <ul>
+        <li>学术论文</li>
+        <li>科研论文</li>
+        <li>申请文书</li>
+        <li>政策提案</li>
+        <li>工作报告</li>
+        <li>项目计划</li>
+      </ul>
+      <p
+        >我们相信，我们的网站将成为学术界和政府部门的重要工具，帮助用户更高效、更创新地进行工作和决策。</p
+      >
     </template>
-    <Description @register="infoRegister" class="enter-y" />
-    <Description @register="register" class="my-4 enter-y" />
-    <Description @register="registerDev" class="enter-y" />
   </PageWrapper>
 </template>
 <script lang="ts" setup>
