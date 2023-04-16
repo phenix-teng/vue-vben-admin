@@ -228,10 +228,10 @@
       }
 
       function handleGenerated(result: any) {
-        let text = editorRef.value.getText();
-        text += result;
-        editorRef.value.setHtml(text);
-        editorRef.value.move(text.length);
+        // let text = editorRef.value.getText();
+        // text += result;
+        editorRef.value.setHtml(result);
+        //editorRef.value.move(text.length);
         //if (result === '\n') editorRef.value.focus(true); //
         //editorRef.value
         //console.log(recommandationOptions.value);

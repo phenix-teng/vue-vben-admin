@@ -2,7 +2,7 @@
 <template>
   <BasicModal
     width="640px"
-    title="重写"
+    title="改写"
     okText="保存"
     v-bind="$attrs"
     @register="regModal"
@@ -105,7 +105,7 @@
             field: 'addition',
             component: 'InputTextArea',
             componentProps: {
-              placeholder: '根据您提供的补充资料，系统将把原内容进行重写。',
+              placeholder: '根据您提供的补充资料，系统将把原内容进行改写。',
               rows: additionRows,
               onfocus: () => {
                 additionRows.value = 10;
@@ -154,7 +154,7 @@
       });
 
       const getGenerateBtnText = computed(() => {
-        return isGenerating.value ? '停止' : '重写';
+        return isGenerating.value ? '停止' : '改写';
       });
 
       async function handleGenerate() {
@@ -204,7 +204,7 @@
               try {
                 const json = JSON.parse(data);
                 const text = json.choices[0].delta?.content || '';
-                newBody.value += text;
+                newBody.value += text.replaceAll('\n\n', '\n');
                 setFieldsValue({ new: newBody.value });
                 redoModalHeight();
               } catch (e) {

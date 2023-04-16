@@ -116,7 +116,7 @@
       );
 
       function handleStarting() {
-        setFieldsValue({ outline: '' });
+        //setFieldsValue({ outline: '' });
       }
 
       function handleGenerated(result: any) {

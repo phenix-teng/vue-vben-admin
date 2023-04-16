@@ -141,7 +141,7 @@
                 const json = JSON.parse(data);
                 const text = json.choices[0].delta?.content || '';
                 //console.log(text);
-                content.value += text;
+                content.value += text.replaceAll('\n\n', '\n');
                 redoModalHeight();
               } catch (e) {
                 //controller.error(e);

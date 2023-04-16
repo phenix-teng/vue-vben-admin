@@ -18,7 +18,7 @@
           @onChange="handleChange"
         /> </template
       ><template #operation
-        ><a-button @click="revision()"> 重写 </a-button>&nbsp;&nbsp;<a-button @click="genDraft()">
+        ><a-button @click="revision()"> 改写 </a-button>&nbsp;&nbsp;<a-button @click="genDraft()">
           生成全文
         </a-button></template
       ><template #nextstep
@@ -87,7 +87,7 @@
         width?: number | undefined;
 
         constructor() {
-          this.title = '重写';
+          this.title = '改写';
           // this.iconSvg = '<svg>...</svg>'
           this.tag = 'button';
         }
@@ -227,16 +227,16 @@
       const handleChange = (/*editor*/) => {};
 
       function handleStarting() {
-        editorRef.value.setHtml('');
+        //editorRef.value.setHtml('');
         editorRef.value.focus();
         //editorRef.value
         //console.log(recommandationOptions.value);
       }
 
       function handleGenerated(result: any) {
-        let text = editorRef.value.getText();
-        text += result;
-        editorRef.value.setHtml(text);
+        // let text = editorRef.value.getText();
+        // text += result;
+        editorRef.value.setHtml(result);
         //editorRef.value.move(text.length);
         //if (result === '\n') editorRef.value.focus(true); //
         //editorRef.value
@@ -256,7 +256,7 @@
 
       async function revision() {
         if (!editorRef.value.selection || editorRef.value.getSelectionText().length < 1) {
-          createWarningModal({ title: '提示', content: '请先选择需要重写的内容' });
+          createWarningModal({ title: '提示', content: '请先选择需要改写的内容' });
           return;
         }
         openRevisionModal(true, {
