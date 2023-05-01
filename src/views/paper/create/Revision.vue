@@ -18,7 +18,9 @@
           @onChange="handleChange"
         /> </template
       ><template #operation
-        ><a-button @click="revision()"> 改写 </a-button>&nbsp;&nbsp;<a-button @click="genDraft()">
+        ><a-button @click="revision()" :disabled="!selecting"> 改写 </a-button>&nbsp;&nbsp;<a-button
+          @click="genDraft()"
+        >
           生成全文
         </a-button></template
       ><template #nextstep
@@ -40,8 +42,7 @@
   import { Alert, Divider, Descriptions } from 'ant-design-vue';
   import { PaperInfo } from '../usePaper';
   import { useMessage } from '/@/hooks/web/useMessage';
-  import { IButtonMenu, IDomEditor } from '@wangeditor/editor';
-  import { Boot } from '@wangeditor/editor';
+  //import { IButtonMenu, IDomEditor, Boot } from '@wangeditor/editor';
   import DraftGenModal from './DraftGenModal.vue';
   import RevisionModal from './RevisionModal.vue';
   import { useModal } from '/@/components/Modal';
@@ -70,6 +71,7 @@
     setup(props, { emit }) {
       const isMounted = ref(false);
       const loading = ref(false);
+      const selecting = ref(false);
       const { clipboardRef, copiedRef } = useCopyToClipboard();
 
       const [registerDraftGenModal, { openModal: openDraftGenModal }] = useModal();
@@ -78,65 +80,65 @@
       const editorRef = shallowRef();
       const richText = ref('');
 
-      class ReviseButtonMenu implements IButtonMenu {
-        title: string;
-        iconSvg?: string | undefined;
-        hotkey?: string | undefined;
-        alwaysEnable?: boolean | undefined;
-        tag: string;
-        width?: number | undefined;
+      // class ReviseButtonMenu implements IButtonMenu {
+      //   title: string;
+      //   iconSvg?: string | undefined;
+      //   hotkey?: string | undefined;
+      //   alwaysEnable?: boolean | undefined;
+      //   tag: string;
+      //   width?: number | undefined;
 
-        constructor() {
-          this.title = '改写';
-          // this.iconSvg = '<svg>...</svg>'
-          this.tag = 'button';
-        }
+      //   constructor() {
+      //     this.title = '改写';
+      //     // this.iconSvg = '<svg>...</svg>'
+      //     this.tag = 'button';
+      //   }
 
-        // 获取菜单执行时的 value ，用不到则返回空 字符串或 false
-        getValue(editor: IDomEditor): string | boolean {
-          const selectedText = editor.getSelectionText();
-          return selectedText.length > 0 ? `${selectedText}` : false;
-        }
+      //   // 获取菜单执行时的 value ，用不到则返回空 字符串或 false
+      //   getValue(editor: IDomEditor): string | boolean {
+      //     const selectedText = editor.getSelectionText();
+      //     return selectedText.length > 0 ? `${selectedText}` : false;
+      //   }
 
-        // 菜单是否需要激活（如选中加粗文本，“加粗”菜单会激活），用不到则返回 false
-        isActive(editor: IDomEditor): boolean {
-          //console.log(editor.getSelectionText());
-          return editor.getSelectionText().length > 0;
-        }
+      //   // 菜单是否需要激活（如选中加粗文本，“加粗”菜单会激活），用不到则返回 false
+      //   isActive(editor: IDomEditor): boolean {
+      //     //console.log(editor.getSelectionText());
+      //     return editor.getSelectionText().length > 0;
+      //   }
 
-        // 菜单是否需要禁用（如选中 H1 ，“引用”菜单被禁用），用不到则返回 false
-        isDisabled(): boolean {
-          return false;
-        }
+      //   // 菜单是否需要禁用（如选中 H1 ，“引用”菜单被禁用），用不到则返回 false
+      //   isDisabled(): boolean {
+      //     return false;
+      //   }
 
-        // 点击菜单时触发的函数
-        async exec(editor: IDomEditor, value: string | boolean) {
-          if (this.isDisabled()) return;
+      //   // 点击菜单时触发的函数
+      //   async exec(editor: IDomEditor, value: string | boolean) {
+      //     if (this.isDisabled()) return;
 
-          if (!value) {
-            createWarningModal({
-              title: '提示',
-              content: '未选中内容',
-            });
-            return;
-          }
+      //     if (!value) {
+      //       createWarningModal({
+      //         title: '提示',
+      //         content: '未选中内容',
+      //       });
+      //       return;
+      //     }
 
-          openRevisionModal(true, {
-            editor: editor,
-            paper: props.paper,
-            old: value as string,
-          });
-          //console.log('Create button', text);
-          //editor.insertText(`[${text}]`); // value 即 this.value(editor) 的返回值
-        }
-      }
+      //     openRevisionModal(true, {
+      //       editor: editor,
+      //       paper: props.paper,
+      //       old: value as string,
+      //     });
+      //     //console.log('Create button', text);
+      //     //editor.insertText(`[${text}]`); // value 即 this.value(editor) 的返回值
+      //   }
+      // }
 
-      Boot.registerMenu({
-        key: 'Revise', // unique
-        factory() {
-          return new ReviseButtonMenu();
-        },
-      });
+      // Boot.registerMenu({
+      //   key: 'Revise', // unique
+      //   factory() {
+      //     return new ReviseButtonMenu();
+      //   },
+      // });
       const toolbarConfig = {
         toolbarKeys: [],
         // insertKeys: {
@@ -148,7 +150,7 @@
         placeholder: '请输入内容...',
         hoverbarKeys: {
           text: {
-            menuKeys: ['Revise'],
+            menuKeys: [], //['Revise'],
           },
         },
       };
@@ -224,7 +226,10 @@
         // });
       };
 
-      const handleChange = (/*editor*/) => {};
+      const handleChange = (/*editor*/) => {
+        selecting.value = editorRef.value.getSelectionText().length > 0;
+        //console.log(editorRef.value.getSelectionText());
+      };
 
       function handleStarting() {
         //editorRef.value.setHtml('');
@@ -283,6 +288,7 @@
         stepPrev,
         handleSubmit,
         loading,
+        selecting,
         editorRef,
         mode: 'default',
         richText,

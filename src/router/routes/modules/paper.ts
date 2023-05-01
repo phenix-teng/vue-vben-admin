@@ -25,6 +25,15 @@ const paper: AppRouteModule = {
         hideMenu: true,
       },
     },
+    {
+      path: 'basic',
+      name: 'basic',
+      component: () => import('/@/views/paper/basic.vue'),
+      meta: {
+        // affix: true,
+        title: '基础测试',
+      },
+    },
   ],
 };
 
